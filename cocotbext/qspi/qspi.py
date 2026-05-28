@@ -442,7 +442,7 @@ class QSpiSubordinateBase(ABC):
 
         return rx_word
 
-    async def _quad_send(self, tx_word: List[int]):
+    async def _quad_send(self, tx_word: int):
         """ Send data on all 4 signal channels.
 
         Args:
