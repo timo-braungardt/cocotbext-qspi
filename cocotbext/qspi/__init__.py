@@ -20,22 +20,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 from .about import __version__
-from .exceptions import SpiFrameError
-from .exceptions import SpiFrameTimeout
-from .spi import reverse_word
-from .spi import SpiBus
-from .spi import SpiConfig
-from .spi import SpiMaster
-from .spi import SpiSlaveBase
+from .exceptions import QSpiFrameError
+from .exceptions import QSpiFrameTimeout
+from .qspi import reverse_word
+from .qspi import QSpiBus
+from .qspi import QSpiConfig
+from .qspi import QSpiMaster
+from .qspi import QSpiSlaveBase
 
 
 __all__ = [
     "__version__",
-    "SpiMaster",
-    "SpiSlaveBase",
-    "SpiBus",
-    "SpiConfig",
-    "SpiFrameError",
-    "SpiFrameTimeout",
+    "QSpiMaster",
+    "QSpiSlaveBase",
+    "QSpiBus",
+    "QSpiConfig",
+    "QSpiFrameError",
+    "QSpiFrameTimeout",
     "reverse_word",
 ]

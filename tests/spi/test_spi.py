@@ -27,36 +27,36 @@ import cocotb
 import cocotb_test.simulator
 from cocotb.triggers import Timer
 
-from cocotbext.spi import SpiBus
-from cocotbext.spi import SpiConfig
-from cocotbext.spi import SpiMaster
-from cocotbext.spi.devices.generic import SpiSlaveLoopback
+from cocotbext.qspi import QSpiBus
+from cocotbext.qspi import QSpiConfig
+from cocotbext.qspi import QSpiMaster
+from cocotbext.qspi.devices.generic import QSpiSlaveLoopback
 
 
 class TB:
-    def __init__(self, dut, sclk_freq, word_width, spi_mode, msb_first, ignore_rx_value):
+    def __init__(self, dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value):
         self.dut = dut
         self.log = logging.getLogger("cocotb.tb")
         self.log.setLevel(logging.DEBUG)
 
-        self.bus = SpiBus.from_entity(dut, cs_name="ncs")
+        self.bus = QSpiBus.from_entity(dut, cs_name="ncs")
 
-        self.config = SpiConfig(
+        self.config = QSpiConfig(
             word_width=word_width,
             sclk_freq=sclk_freq,
-            cpol=bool(spi_mode in [2, 3]),
-            cpha=bool(spi_mode in [1, 3]),
+            cpol=bool(qspi_mode in [2, 3]),
+            cpha=bool(qspi_mode in [1, 3]),
             msb_first=msb_first,
             frame_spacing_ns=10,
             ignore_rx_value=ignore_rx_value,
             cs_active_low=True,
         )
 
-        dut.spi_mode.value = spi_mode
-        dut.spi_word_width.value = word_width
+        dut.qspi_mode.value = qspi_mode
+        dut.qspi_word_width.value = word_width
 
-        self.source = SpiMaster(self.bus, self.config)
-        self.sink = SpiSlaveLoopback(self.bus, self.config)
+        self.source = QSpiMaster(self.bus, self.config)
+        self.sink = QSpiSlaveLoopback(self.bus, self.config)
 
 
 @cocotb.test(
@@ -66,21 +66,21 @@ class TB:
 @cocotb.parametrize(
     sclk_freq=[15e6, 25e6],
     word_width=[8, 16, 32],
-    spi_mode=[0, 1, 2, 3],
+    qspi_mode=[0, 1, 2, 3],
     msb_first=[True, False],
     ignore_rx_value=[None, 0, 128],
 )
-async def run_test(dut, sclk_freq, word_width, spi_mode, msb_first, ignore_rx_value):
+async def run_test(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value):
     payload_lengths = list(range(1, 16)) + [128]
 
     def incrementing_payload(length):
         return bytearray(itertools.islice(itertools.cycle(range(256)), length))
 
-    tb = TB(dut, sclk_freq, word_width, spi_mode, msb_first, ignore_rx_value)
+    tb = TB(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value)
     tb.log.info(
         "Running test with sclk_freq=%s mode=%s, msb_first=%s, word_width=%s, ignore_rx_value=%s",
         sclk_freq,
-        spi_mode,
+        qspi_mode,
         msb_first,
         word_width,
         ignore_rx_value,
@@ -112,8 +112,8 @@ async def run_test(dut, sclk_freq, word_width, spi_mode, msb_first, ignore_rx_va
 tests_dir = os.path.dirname(__file__)
 
 
-def test_spi(request):
-    dut = "test_spi"
+def test_qspi(request):
+    dut = "test_qspi"
     module = os.path.splitext(os.path.basename(__file__))[0]
     toplevel = dut
 

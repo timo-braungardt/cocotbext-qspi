@@ -9,7 +9,7 @@ from typing import Deque, Iterable, Optional, Tuple
 import cocotb
 from cocotb.triggers import Event, FallingEdge, First, RisingEdge, Timer
 
-from .exceptions import SpiFrameError
+from .exceptions import QSpiFrameError
 
 
 class Bus:
@@ -44,7 +44,7 @@ class Bus:
             setattr(self, attr_name, signal_handle)
 
 
-class SpiBus(Bus):
+class QSpiBus(Bus):
     def __init__(
         self,
         entity=None,
@@ -72,7 +72,7 @@ class SpiBus(Bus):
 
 
 @dataclass
-class SpiConfig:
+class QSpiConfig:
     word_width: int = 8
     sclk_freq: Optional[float] = 25e6
     cpol: bool = False
@@ -84,11 +84,11 @@ class SpiConfig:
     cs_active_low: bool = True
 
 
-class SpiMaster:
-    def __init__(self, bus: SpiBus, config: SpiConfig) -> None:
+class QSpiMaster:
+    def __init__(self, bus: QSpiBus, config: QSpiConfig) -> None:
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
-        # spi signals
+        # qspi signals
         self._sclk = bus.sclk
         self._mosi = bus.mosi
         self._miso = bus.miso
@@ -112,7 +112,7 @@ class SpiMaster:
         if self.has_cs:
             self._cs.value = 1 if self._config.cs_active_low else 0
 
-        self._SpiClock = _SpiClock(
+        self._QSpiClock = _QSpiClock(
             signal=self._sclk,
             period=(1 / self._config.sclk_freq),
             unit="sec",
@@ -212,9 +212,9 @@ class SpiMaster:
             # set the chip select
             if self.has_cs:
                 self._cs.value = int(not self._config.cs_active_low)
-            await Timer(self._SpiClock.period, unit='step')
+            await Timer(self._QSpiClock.period, unit='step')
 
-            await self._SpiClock.start()
+            await self._QSpiClock.start()
 
             if self._config.cpha:
                 # if CPHA=1, the first edge is propagate, the second edge is sample
@@ -241,11 +241,11 @@ class SpiMaster:
                 rx_word |= bool(self._miso.value)
 
             # set sclk back to idle state
-            await self._SpiClock.stop()
+            await self._QSpiClock.stop()
             self._sclk.value = self._config.cpol
 
             # wait another sclk period before restoring the chip select and miso to idle (not necessarily part of spec)
-            await Timer(self._SpiClock.period, unit='step')
+            await Timer(self._QSpiClock.period, unit='step')
             self._mosi.value = int(self._config.data_output_idle)
             if self.has_cs:
                 if not burst or self.empty_tx():
@@ -265,10 +265,10 @@ class SpiMaster:
             self.sync.set()
 
 
-class SpiSlaveBase(ABC):
-    _config: SpiConfig
+class QSpiSlaveBase(ABC):
+    _config: QSpiConfig
 
-    def __init__(self, bus: SpiBus):
+    def __init__(self, bus: QSpiBus):
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
         self._sclk = bus.sclk
@@ -307,7 +307,7 @@ class SpiSlaveBase(ABC):
             # If both events happen at the same time, the returned one is indeterminate, thus
             # checking for cs = 1
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
                 # when CPHA=1, the slave should shift out on the first edge
@@ -321,7 +321,7 @@ class SpiSlaveBase(ABC):
 
             # do the opposite of what was done on the first edge
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
                 rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
@@ -366,9 +366,9 @@ class SpiSlaveBase(ABC):
 
                 if w != propagate_out_delay:
                     if w == frame_end:
-                        raise SpiFrameError("Unexpected end of frame in the middle of a transaction")
+                        raise QSpiFrameError("Unexpected end of frame in the middle of a transaction")
                     else:
-                        raise SpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
+                        raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
                 self._miso.value = bool(most_recent_bit)
 
@@ -383,20 +383,20 @@ class SpiSlaveBase(ABC):
 
                 if w != propagate_out_delay:
                     if w == frame_end:
-                        raise SpiFrameError("Unexpected end of frame in the middle of a transaction")
+                        raise QSpiFrameError("Unexpected end of frame in the middle of a transaction")
                     else:
-                        raise SpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
+                        raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
                 self._miso.value = bool(most_recent_bit)
 
             if frame_end in (f, s):
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
         return rx_word
 
     @abstractmethod
     async def _transaction(self, frame_start, frame_end):
-        """Implement the details of an SPI transaction """
+        """Implement the details of an QSPI transaction """
         raise NotImplementedError("Please implement the _transaction method")
 
     async def _run(self):
@@ -412,11 +412,11 @@ class SpiSlaveBase(ABC):
         while True:
             self.idle.set()
             if (await First(frame_start, frame_spacing)) == frame_start:
-                raise SpiFrameError(f"There must be at least {self._config.frame_spacing_ns} ns between frames")
+                raise QSpiFrameError(f"There must be at least {self._config.frame_spacing_ns} ns between frames")
             await self._transaction(frame_start, frame_end)
 
 
-class _SpiClock:
+class _QSpiClock:
     def __init__(self, signal, period, unit="step", start_high=True):
         self.period = cocotb.utils.get_sim_steps(period, unit, round_mode="round")
         self.half_period = cocotb.utils.get_sim_steps(period / 2.0, unit, round_mode="round")

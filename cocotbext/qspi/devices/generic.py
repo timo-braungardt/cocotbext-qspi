@@ -5,12 +5,12 @@ from collections import deque
 
 from cocotb.triggers import First
 
-from ..exceptions import SpiFrameError
-from ..spi import SpiBus, SpiConfig, SpiSlaveBase, reverse_word
+from ..exceptions import QSpiFrameError
+from ..qspi import QSpiBus, QSpiConfig, QSpiSlaveBase, reverse_word
 
 
-class SpiSlaveLoopback(SpiSlaveBase):
-    def __init__(self, bus: SpiBus, config: SpiConfig):
+class QSpiSlaveLoopback(QSpiSlaveBase):
+    def __init__(self, bus: QSpiBus, config: QSpiConfig):
         self._config = config
 
         self._out_queue = deque()
@@ -43,7 +43,7 @@ class SpiSlaveLoopback(SpiSlaveBase):
 
             # check to make sure we didn't lose the frame
             if r == frame_end:
-                raise SpiFrameError("End of frame before last bit was sampled")
+                raise QSpiFrameError("End of frame before last bit was sampled")
         else:
             content = int(await self._shift(self._config.word_width, tx_word=tx_word))
 

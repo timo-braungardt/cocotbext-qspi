@@ -1,6 +1,6 @@
-class SpiFrameError(Exception):
+class QSpiFrameError(Exception):
     pass
 
 
-class SpiFrameTimeout(Exception):
+class QSpiFrameTimeout(Exception):
     pass
