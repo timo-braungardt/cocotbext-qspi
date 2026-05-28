@@ -274,11 +274,16 @@ class QSpiSubordinateBase(ABC):
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
         self._sclk = bus.sclk
-        self._mosi = bus.mosi
-        self._miso = bus.miso
+        self._mosi_d1 = bus.mosi_d1
+        self._miso_d0 = bus.miso_d0
+        self._d2 = bus._d2
+        self._d3 = bus._d3
         self._cs = bus.cs
 
-        self._miso.value = self._config.data_output_idle
+        self._miso_d0.value = self._config.data_output_idle
+        self._mosi_d1.value = self._config.data_output_idle     # ToDo: is this a problem because the signal is bidirectional now?
+        self._d2.value = self._config.data_output_idle
+        self._d3.value = self._config.data_output_idle
 
         self.idle = Event()
         self.idle.set()
@@ -314,24 +319,24 @@ class QSpiSubordinateBase(ABC):
             if self._config.cpha:
                 # when CPHA=1, the subordinate should shift out on the first edge
                 if tx_word is not None:
-                    self._miso.value = bool(tx_word & (1 << (num_bits - 1 - k)))
+                    self._miso_d0.value = bool(tx_word & (1 << (num_bits - 1 - k)))
                 else:
-                    self._miso.value = self._config.data_output_idle
+                    self._miso_d0.value = self._config.data_output_idle
             else:
                 # when CPHA=0, the subordinate should sample on the first edge
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
 
             # do the opposite of what was done on the first edge
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
                 raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
             else:
                 if tx_word is not None:
-                    self._miso.value = bool(tx_word & (1 << (num_bits - 1 - k)))
+                    self._miso_d0.value = bool(tx_word & (1 << (num_bits - 1 - k)))
                 else:
-                    self._miso.value = self._config.data_output_idle
+                    self._miso_d0.value = self._config.data_output_idle
 
         return rx_word
 
@@ -361,8 +366,8 @@ class QSpiSubordinateBase(ABC):
             f = await First(self._sclk.value_change, frame_end)
             if not self._config.cpha:
                 # when CPHA=0, the first thing the subordinate should do is read in
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
-                most_recent_bit = int(self._mosi.value)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                most_recent_bit = int(self._mosi_d1.value)
 
                 w = await First(propagate_out_delay, frame_end, self._sclk.value_change)
 
@@ -372,14 +377,14 @@ class QSpiSubordinateBase(ABC):
                     else:
                         raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
-                self._miso.value = bool(most_recent_bit)
+                self._miso_d0.value = bool(most_recent_bit)
 
             s = await First(self._sclk.value_change, frame_end)
 
             if self._config.cpha:
                 # when CPHA=1, the second thing we should do is read in
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
-                most_recent_bit = int(self._mosi.value)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                most_recent_bit = int(self._mosi_d1.value)
 
                 w = await First(propagate_out_delay, frame_end, self._sclk.value_change)
 
@@ -389,7 +394,7 @@ class QSpiSubordinateBase(ABC):
                     else:
                         raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
-                self._miso.value = bool(most_recent_bit)
+                self._miso_d0.value = bool(most_recent_bit)
 
             if frame_end in (f, s):
                 raise QSpiFrameError("End of frame in the middle of a transaction")
