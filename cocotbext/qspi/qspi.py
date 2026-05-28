@@ -94,8 +94,8 @@ class QSpiManager:
         self._sclk = bus.sclk
         self._mosi_d1 = bus.mosi_d1
         self._miso_d0 = bus.miso_d0
-        self._d2 = bus._d2
-        self._d3 = bus._d3
+        self._d2 = bus.d2
+        self._d3 = bus.d3
         self.has_cs = hasattr(bus, 'cs')
         if self.has_cs:
             self._cs = bus.cs
@@ -278,8 +278,8 @@ class QSpiSubordinateBase(ABC):
         self._sclk = bus.sclk
         self._mosi_d1 = bus.mosi_d1
         self._miso_d0 = bus.miso_d0
-        self._d2 = bus._d2
-        self._d3 = bus._d3
+        self._d2 = bus.d2
+        self._d3 = bus.d3
         self._cs = bus.cs
 
         self._miso_d0.value = self._config.data_output_idle
