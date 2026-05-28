@@ -152,6 +152,26 @@ class QSpiManager:
         self.sync.set()
         self._idle.clear()
 
+    async def quad_write(self, data: Iterable[int], *, burst: bool = False):
+        self.quad_write_nowait(data, burst=burst)
+        await self._idle.wait()
+
+    def quad_write_nowait(self, data: Iterable[int], *, burst: bool = False) -> None:
+        """ Write the data to the MOSI line
+
+        Args:
+            data: an iterable of ints, if the wordwidth is 8, a bytearray is typically appropriate
+            burst: if true, CS is not deasserted between writes
+        """
+        if self._config.msb_first:
+            for b in data:
+                self.queue_tx.append((int(b), burst))
+        else:
+            for b in data:
+                self.queue_tx.append((reverse_word(int(b), self._config.word_width), burst))
+        self.sync.set()
+        self._idle.clear()
+
     async def read(self, count: int = -1):
         while self.empty_rx():
             self.sync.clear()
@@ -193,6 +213,62 @@ class QSpiManager:
         """ Wait for idle """
         await self._idle.wait()
 
+    async def _output_write(self, rx_word, tx_word):
+        if self._config.cpha:
+            # if CPHA=1, the first edge is propagate, the second edge is sample
+            for k in range(self._config.word_width):
+                # the out changes on the leading edge of clock
+                await self._sclk.value_change
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
+
+                # while the in captures on the trailing edge of the clock
+                await self._sclk.value_change
+                rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
+        else:
+            # if CPHA=0, the first edge is sample, the second edge is propagate
+            # we already clocked out one bit on edge of chip select, so we will clock out less bits
+            for k in range(self._config.word_width - 1):
+                await self._sclk.value_change
+                rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
+
+                await self._sclk.value_change
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+
+            # but we haven't sampled enough times, so we will wait for another edge to sample
+            await self._sclk.value_change
+            rx_word |= bool(self._miso_d0.value)
+
+        return rx_word
+
+    async def _quad_output_write(self, rx_word, tx_word):
+        if self._config.cpha:
+            # if CPHA=1, the first edge is propagate, the second edge is sample
+            for k in range(self._config.word_width):
+                # the out changes on the leading edge of clock
+                await self._sclk.value_change
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 3 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 4 - k)))
+
+                await self._sclk.value_change
+
+        else:
+            # if CPHA=0, the first edge is sample, the second edge is propagate
+            # we already clocked out one bit on edge of chip select, so we will clock out less bits
+            for k in range(self._config.word_width - 1):
+                await self._sclk.value_change
+                await self._sclk.value_change
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 3 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 4 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 5 - k)))
+
+            # but we haven't sampled enough times, so we will wait for another edge to sample
+            await self._sclk.value_change
+
+        return rx_word
+
     async def _run(self):
         while True:
             while not self.queue_tx:
@@ -221,29 +297,10 @@ class QSpiManager:
 
             await self._QSpiClock.start()
 
-            if self._config.cpha:
-                # if CPHA=1, the first edge is propagate, the second edge is sample
-                for k in range(self._config.word_width):
-                    # the out changes on the leading edge of clock
-                    await self._sclk.value_change
-                    self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
-
-                    # while the in captures on the trailing edge of the clock
-                    await self._sclk.value_change
-                    rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
+            if not self._config.is_quad_mode:
+                rx_word = await self._output_write(rx_word, tx_word)
             else:
-                # if CPHA=0, the first edge is sample, the second edge is propagate
-                # we already clocked out one bit on edge of chip select, so we will clock out less bits
-                for k in range(self._config.word_width - 1):
-                    await self._sclk.value_change
-                    rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
-
-                    await self._sclk.value_change
-                    self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
-
-                # but we haven't sampled enough times, so we will wait for another edge to sample
-                await self._sclk.value_change
-                rx_word |= bool(self._miso_d0.value)
+                rx_word = await self._quad_output_write(rx_word, tx_word)
 
             # set sclk back to idle state
             await self._QSpiClock.stop()
