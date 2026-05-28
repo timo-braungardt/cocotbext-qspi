@@ -401,6 +401,52 @@ class QSpiSubordinateBase(ABC):
 
         return rx_word
 
+    async def _quad_recieve(self, num_bits: int) -> int:
+        """ Recieve data on all 4 signal channels.
+
+        Args:
+            num_bits: the numbers of bits which should be revieved
+
+        Returns:
+            the received word
+        """
+        rx_word = 0
+
+        frame_end = RisingEdge(self._cs) if self._config.cs_active_low else FallingEdge(self._cs)
+
+        for k in range(0, num_bits, 4):
+            # If both events happen at the same time, the returned one is indeterminate, thus
+            # checking for cs = 1
+            if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
+                raise QSpiFrameError("End of frame in the middle of a transaction")
+
+            if not self._config.cpha:
+                # when CPHA=0, the subordinate should sample on the first edge
+                rx_word |= int(self._miso_d0.value) << (num_bits - 1 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 2 - k)
+                rx_word |= int(self._d2.value)      << (num_bits - 3 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 4 - k)
+
+            # do the opposite of what was done on the first edge
+            if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
+                raise QSpiFrameError("End of frame in the middle of a transaction")
+
+            if self._config.cpha:
+                rx_word |= int(self._miso_d0.value) << (num_bits - 1 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 2 - k)
+                rx_word |= int(self._d2.value)      << (num_bits - 3 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 4 - k)
+            
+
+        return rx_word
+
+    async def _quad_send(self, tx_word: List[int]):
+        """ Send data on all 4 signal channels.
+
+        Args:
+            tx_word: the bytes to be transmitted on the wire
+        """
+
     @abstractmethod
     async def _transaction(self, frame_start, frame_end):
         """Implement the details of an QSPI transaction """
