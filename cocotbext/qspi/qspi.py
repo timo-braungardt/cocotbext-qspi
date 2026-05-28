@@ -84,7 +84,7 @@ class QSpiConfig:
     cs_active_low: bool = True
 
 
-class QSpiMaster:
+class QSpiManager:
     def __init__(self, bus: QSpiBus, config: QSpiConfig) -> None:
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
@@ -265,7 +265,7 @@ class QSpiMaster:
             self.sync.set()
 
 
-class QSpiSlaveBase(ABC):
+class QSpiSubordinateBase(ABC):
     _config: QSpiConfig
 
     def __init__(self, bus: QSpiBus):
@@ -310,13 +310,13 @@ class QSpiSlaveBase(ABC):
                 raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
-                # when CPHA=1, the slave should shift out on the first edge
+                # when CPHA=1, the subordinate should shift out on the first edge
                 if tx_word is not None:
                     self._miso.value = bool(tx_word & (1 << (num_bits - 1 - k)))
                 else:
                     self._miso.value = self._config.data_output_idle
             else:
-                # when CPHA=0, the slave should sample on the first edge
+                # when CPHA=0, the subordinate should sample on the first edge
                 rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
 
             # do the opposite of what was done on the first edge
@@ -358,7 +358,7 @@ class QSpiSlaveBase(ABC):
         for k in range(num_bits):
             f = await First(self._sclk.value_change, frame_end)
             if not self._config.cpha:
-                # when CPHA=0, the first thing the slave should do is read in
+                # when CPHA=0, the first thing the subordinate should do is read in
                 rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
                 most_recent_bit = int(self._mosi.value)
 

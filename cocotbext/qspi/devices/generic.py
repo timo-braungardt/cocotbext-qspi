@@ -6,10 +6,10 @@ from collections import deque
 from cocotb.triggers import First
 
 from ..exceptions import QSpiFrameError
-from ..qspi import QSpiBus, QSpiConfig, QSpiSlaveBase, reverse_word
+from ..qspi import QSpiBus, QSpiConfig, QSpiSubordinateBase, reverse_word
 
 
-class QSpiSlaveLoopback(QSpiSlaveBase):
+class QSpiSubordinateLoopback(QSpiSubordinateBase):
     def __init__(self, bus: QSpiBus, config: QSpiConfig):
         self._config = config
 

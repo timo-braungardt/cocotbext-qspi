@@ -103,8 +103,8 @@ spi_config = SpiConfig(
     cpha       = True,      # clock phase (CPHA=True means data sampled on second edge)
     msb_first  = True,      # the order that bits are clocked onto the wire
     data_output_idle = 1,   # the idle value of the MOSI or MISO line
-    frame_spacing_ns = 1,   # the spacing between frames that the master waits for or the slave obeys
-                            #       the slave should raise SpiFrameError if this is not obeyed.
+    frame_spacing_ns = 1,   # the spacing between frames that the manager waits for or the subordinate obeys
+                            #       the subordinate should raise SpiFrameError if this is not obeyed.
     ignore_rx_value = None, # MISO value that should be ignored when received
     cs_active_low = True    # the chip select is active low
 )
@@ -112,14 +112,14 @@ spi_config = SpiConfig(
 
 All parameters are optional, and the defaults are shown above.
 
-### SPI Master
+### SPI Manager
 
-The `SpiMaster` class acts as an SPI Master endpoint.
+The `SpiManager` class acts as an SPI Manager endpoint.
 
 To use this class, import it, configure it, and connect to the dut.
 
 ```python
-from cocotbext.spi import SpiMaster, SpiBus, SpiConfig
+from cocotbext.spi import SpiManager, SpiBus, SpiConfig
 
 spi_bus = SpiBus.from_entity(dut)
 
@@ -132,20 +132,20 @@ spi_config = SpiConfig(
     cs_active_low = True # optional (assumed True)
 )
 
-spi_master = SpiMaster(spi_bus, spi_config)
+spi_manager = SpiManager(spi_bus, spi_config)
 ```
 
-To send data into a design with `SpiMaster`, call `write()` or `write_nowait()`. Accepted data types are iterables of ints including lists, bytes, bytearrays, etc. Optionally, call wait() to wait for the transmit operation to complete. We can take a look at the data received back with `read()` or `read_nowait()`
+To send data into a design with `SpiManager`, call `write()` or `write_nowait()`. Accepted data types are iterables of ints including lists, bytes, bytearrays, etc. Optionally, call wait() to wait for the transmit operation to complete. We can take a look at the data received back with `read()` or `read_nowait()`
 
 ```python
 # TX/RX transaction example
-spi_master.write_nowait([0xFFFF])
-await spi_master.wait()
-read_bytes = await spi_master.read()
+spi_manager.write_nowait([0xFFFF])
+await spi_manager.wait()
+read_bytes = await spi_manager.read()
 print(read_bytes)
 
 # we can alternatively call (which has equivalent functionality)
-await spi_master.write([0xFFFF])
+await spi_manager.write([0xFFFF])
 read_bytes = await spi_masetr.read()
 ```
 
@@ -167,16 +167,16 @@ read_bytes = await spi_masetr.read()
 - `idle()`: returns True if the transmit and receive buffers are empty
 - `clear()`: drop all data in the queue
 
-### SPI Slave
+### SPI Subordinate
 
-The `SpiSlaveBase` acts as an abstract class for a SPI Slave Endpoint.
+The `SpiSubordinateBase` acts as an abstract class for a SPI Subordinate Endpoint.
 
-To use this class, import it and inherit it. Then use the subclass as the slave and connect it to the dut.
+To use this class, import it and inherit it. Then use the subclass as the subordinate and connect it to the dut.
 
 ```python
-from cocotbext.spi import SpiMaster, SpiBus, SpiConfig
+from cocotbext.spi import SpiManager, SpiBus, SpiConfig
 
-class SimpleSpiSlave(SpiSlaveBase):
+class SimpleSpiSubordinate(SpiSubordinateBase):
     def __init__(self, bus):
         self._config = SpiConfig()
         self.content = 0
@@ -194,14 +194,14 @@ class SimpleSpiSlave(SpiSlaveBase):
 
         await frame_end
 
-spi_slave = SimpleSpiSlave(SpiBus.from_entity(dut))
+spi_subordinate = SimpleSpiSubordinate(SpiBus.from_entity(dut))
 ```
 
 #### Implementation
 
-All SPI Slave Classes should:
+All SPI Subordinate Classes should:
 
-- inherit the SpiSlaveBase class
+- inherit the SpiSubordinateBase class
 - define `self._config` adjust the values for:
     - `word_width`
     - `cpha`
@@ -218,14 +218,14 @@ All SPI Slave Classes should:
   `self.idle`, otherwise the data may not be up to date because the device is
   in the middle of a transaction.
 
-#### SPI Slave Transaction Utility Functions
+#### SPI Subordinate Transaction Utility Functions
 This package provides `_shift()` and `_transparent_shift()` utility functions
 that shifts a specified number of bits according to the SPI mode. However, it
 should be noted that this function alone does not fully implement the standard
 transaction behavior for a SPI device across all SPI modes.
 
-For example, when CPHA=0, slaves will typically shift out the first bit on
-falling edge of the chip select. It is expected for slaves to implement this
+For example, when CPHA=0, subordinates will typically shift out the first bit on
+falling edge of the chip select. It is expected for subordinates to implement this
 behavior independently at the transaction level rather than utilize the `_shift()`
 functions to achieve this behavior. Please refer to [#29](https://github.com/schang412/cocotbext-spi/issues/29)
 for more details.
@@ -233,14 +233,14 @@ for more details.
 
 #### Simulated Devices
 
-This framework includes some SPI Slave devices built in. A list of supported devices can be found in `cocotbext/spi/devices` and are sorted by vendor.
+This framework includes some SPI Subordinate devices built in. A list of supported devices can be found in `cocotbext/spi/devices` and are sorted by vendor.
 
 To use these devices, you can simply import them.
 
 ```python
 from cocotbext.spi.devices.TI import DRV8306
 
-spi_slave = DRV8306(SpiBus.from_entity(dut, cs_name="ncs"))
+spi_subordinate = DRV8306(SpiBus.from_entity(dut, cs_name="ncs"))
 ```
 
 To submit a new device, make a pull request.

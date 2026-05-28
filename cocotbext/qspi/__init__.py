@@ -25,14 +25,14 @@ from .exceptions import QSpiFrameTimeout
 from .qspi import reverse_word
 from .qspi import QSpiBus
 from .qspi import QSpiConfig
-from .qspi import QSpiMaster
-from .qspi import QSpiSlaveBase
+from .qspi import QSpiManager
+from .qspi import QSpiSubordinateBase
 
 
 __all__ = [
     "__version__",
-    "QSpiMaster",
-    "QSpiSlaveBase",
+    "QSpiManager",
+    "QSpiSubordinateBase",
     "QSpiBus",
     "QSpiConfig",
     "QSpiFrameError",
