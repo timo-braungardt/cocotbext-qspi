@@ -50,12 +50,14 @@ class QSpiBus(Bus):
         entity=None,
         prefix=None,
         sclk_name='sclk',
-        mosi_name='mosi',
-        miso_name='miso',
+        mosi_d1_name='mosi_d1',
+        miso_d0_name='miso_d0',
+        d2_name='d2',
+        d3_name='d3',
         cs_name=None,
         **kwargs,
     ):
-        signals = {'sclk': sclk_name, 'mosi': mosi_name, 'miso': miso_name}
+        signals = {'sclk': sclk_name, 'mosi_d1': mosi_d1_name, 'miso_d0': miso_d0_name, 'd2': d2_name, 'd3':d3_name}
         if cs_name is None:
             optional_signals = {}
         else:
@@ -108,7 +110,7 @@ class QSpiManager:
         self._idle.set()
 
         self._sclk.value = int(self._config.cpol)
-        self._mosi.value = self._config.data_output_idle
+        self._mosi_d1.value = self._config.data_output_idle
         if self.has_cs:
             self._cs.value = 1 if self._config.cs_active_low else 0
 
