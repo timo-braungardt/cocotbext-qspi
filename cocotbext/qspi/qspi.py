@@ -92,8 +92,10 @@ class QSpiManager:
 
         # qspi signals
         self._sclk = bus.sclk
-        self._mosi = bus.mosi
-        self._miso = bus.miso
+        self._mosi_d1 = bus.mosi_d1
+        self._miso_d0 = bus.miso_d0
+        self._d2 = bus._d2
+        self._d3 = bus._d3
         self.has_cs = hasattr(bus, 'cs')
         if self.has_cs:
             self._cs = bus.cs
@@ -209,7 +211,7 @@ class QSpiManager:
 
             # if CPHA=0, the first bit is typically clocked out on edge of chip select
             if not self._config.cpha:
-                self._mosi.value = bool(tx_word & (1 << self._config.word_width - 1))
+                self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 1))
 
             # set the chip select
             if self.has_cs:
@@ -223,24 +225,24 @@ class QSpiManager:
                 for k in range(self._config.word_width):
                     # the out changes on the leading edge of clock
                     await self._sclk.value_change
-                    self._mosi.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
+                    self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
 
                     # while the in captures on the trailing edge of the clock
                     await self._sclk.value_change
-                    rx_word |= bool(self._miso.value) << (self._config.word_width - 1 - k)
+                    rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
             else:
                 # if CPHA=0, the first edge is sample, the second edge is propagate
                 # we already clocked out one bit on edge of chip select, so we will clock out less bits
                 for k in range(self._config.word_width - 1):
                     await self._sclk.value_change
-                    rx_word |= bool(self._miso.value) << (self._config.word_width - 1 - k)
+                    rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
 
                     await self._sclk.value_change
-                    self._mosi.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+                    self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
 
                 # but we haven't sampled enough times, so we will wait for another edge to sample
                 await self._sclk.value_change
-                rx_word |= bool(self._miso.value)
+                rx_word |= bool(self._miso_d0.value)
 
             # set sclk back to idle state
             await self._QSpiClock.stop()
@@ -248,7 +250,7 @@ class QSpiManager:
 
             # wait another sclk period before restoring the chip select and miso to idle (not necessarily part of spec)
             await Timer(self._QSpiClock.period, unit='step')
-            self._mosi.value = int(self._config.data_output_idle)
+            self._mosi_d1.value = int(self._config.data_output_idle)
             if self.has_cs:
                 if not burst or self.empty_tx():
                     self._cs.value = int(self._config.cs_active_low)
