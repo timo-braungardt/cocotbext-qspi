@@ -84,6 +84,7 @@ class QSpiConfig:
     data_output_idle: int = 1
     ignore_rx_value: Optional[int] = None
     cs_active_low: bool = True
+    is_quad_mode: bool = False
 
 
 class QSpiManager:
