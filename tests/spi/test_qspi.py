@@ -1,0 +1,195 @@
+"""
+Copyright (c) 2021 Spencer Chang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+import itertools
+import logging
+import os
+
+import cocotb
+import cocotb_test.simulator
+from cocotb.triggers import Timer
+
+from cocotbext.qspi import QSpiBus
+from cocotbext.qspi import QSpiConfig
+from cocotbext.qspi import QSpiManager
+from cocotbext.qspi.devices.generic import QSpiSubordinateLoopback
+
+
+class TB:
+    def __init__(self, dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value, is_quad_mode):
+        self.dut = dut
+        self.log = logging.getLogger("cocotb.tb")
+        self.log.setLevel(logging.DEBUG)
+
+        self.bus = QSpiBus.from_entity(dut, cs_name="ncs")
+
+        self.config = QSpiConfig(
+            word_width=word_width,
+            sclk_freq=sclk_freq,
+            cpol=bool(qspi_mode in [2, 3]),
+            cpha=bool(qspi_mode in [1, 3]),
+            msb_first=msb_first,
+            frame_spacing_ns=10,
+            ignore_rx_value=ignore_rx_value,
+            cs_active_low=True,
+            is_quad_mode=is_quad_mode,
+        )
+
+        dut.qspi_mode.value = qspi_mode
+        dut.qspi_word_width.value = word_width
+
+        self.source = QSpiManager(self.bus, self.config)
+        self.sink = QSpiSubordinateLoopback(self.bus, self.config)
+
+
+@cocotb.test(
+    timeout_time=1,
+    timeout_unit="ms",
+)
+@cocotb.parametrize(
+    sclk_freq=[15e6],
+    word_width=[8],
+    qspi_mode=[0],
+    msb_first=[True],
+    ignore_rx_value=[None],
+    is_quad_mode=[False],
+)
+async def run_test_spi(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value, is_quad_mode):
+    payload_lengths = list(range(1, 4))
+
+    def incrementing_payload(length):
+        return bytearray(itertools.islice(itertools.cycle(range(256)), length))
+
+    tb = TB(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value, is_quad_mode)
+    tb.log.info(
+        "Running test with sclk_freq=%s mode=%s, msb_first=%s, word_width=%s, ignore_rx_value=%s, is_quad_mode=%s",
+        sclk_freq,
+        qspi_mode,
+        msb_first,
+        word_width,
+        ignore_rx_value,
+        is_quad_mode,
+    )
+
+    await Timer(10, 'us')
+
+    for test_data in [incrementing_payload(x) for x in payload_lengths]:
+        tb.log.info("Write data: %s", ','.join(['0x%02x' % x for x in test_data]))
+        await tb.source.write(test_data)
+
+        # if the rx_queue is empty after write do not wait for read,
+        # otherwise it will crash. (This happens when ignore_rx_value is set)
+        rx_data = tb.source.read_nowait() if tb.source.empty_rx() else await tb.source.read()
+        sink_content = await tb.sink.get_contents()
+
+        # remove ignore_rx_value from sink and test_data for assert
+        filtered_test_data = list(filter(lambda v: v != ignore_rx_value, test_data))
+        filtered_sink = [sink_content] if sink_content != ignore_rx_value else []
+
+        tb.log.info("Read data: %s", ','.join(['0x%02x' % x for x in rx_data]))
+        tb.log.info(f"In register: 0x{sink_content:02x}")
+        assert list(rx_data[1:]) + filtered_sink == filtered_test_data
+
+    await Timer(100, 'us')
+
+
+@cocotb.test(
+    timeout_time=1,
+    timeout_unit="ms",
+)
+@cocotb.parametrize(
+    sclk_freq=[15e6],
+    word_width=[8],
+    qspi_mode=[0],
+    msb_first=[True],
+    ignore_rx_value=[None],
+    is_quad_mode=[True],
+)
+async def run_test_qspi(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value, is_quad_mode):
+    payload_lengths = list(range(1, 4))
+
+    def incrementing_payload(length):
+        return bytearray(itertools.islice(itertools.cycle(range(256)), length))
+
+    tb = TB(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore_rx_value, is_quad_mode)
+    tb.log.info(
+        "Running test with sclk_freq=%s mode=%s, msb_first=%s, word_width=%s, ignore_rx_value=%s, is_quad_mode=%s",
+        sclk_freq,
+        qspi_mode,
+        msb_first,
+        word_width,
+        ignore_rx_value,
+        is_quad_mode,
+)
+
+    await Timer(10, 'us')
+
+    for test_data in [incrementing_payload(x) for x in payload_lengths]:
+        tb.log.info("Write data: %s", ','.join(['0x%02x' % x for x in test_data]))
+        await tb.source.write(test_data)
+
+        # if the rx_queue is empty after write do not wait for read,
+        # otherwise it will crash. (This happens when ignore_rx_value is set)
+        rx_data = tb.source.read_nowait() if tb.source.empty_rx() else await tb.source.read()
+        sink_content = await tb.sink.get_contents()
+
+        # remove ignore_rx_value from sink and test_data for assert
+        filtered_test_data = list(filter(lambda v: v != ignore_rx_value, test_data))
+        filtered_sink = [sink_content] if sink_content != ignore_rx_value else []
+
+        tb.log.info("Read data: %s", ','.join(['0x%02x' % x for x in rx_data]))
+        tb.log.info(f"In register: 0x{sink_content:02x}")
+        assert list(rx_data[1:]) + filtered_sink == filtered_test_data
+
+    await Timer(100, 'us')
+
+
+# cocotb-test
+tests_dir = os.path.dirname(__file__)
+
+
+def test_qspi(request):
+    dut = "test_qspi"
+    module = os.path.splitext(os.path.basename(__file__))[0]
+    toplevel = dut
+
+    sources = [
+        os.path.join(tests_dir, f"{dut}.v"),
+    ]
+
+    parameters = {}
+
+    extra_env = {f'PARAM_{k}': str(v) for k, v in parameters.items()}
+
+    sim_build = os.path.join(
+        tests_dir, "sim_build",
+        request.node.name.replace('[', '-').replace(']', ''),
+    )
+
+    cocotb_test.simulator.run(
+        python_search=[tests_dir],
+        verilog_sources=sources,
+        toplevel=toplevel,
+        module=module,
+        parameters=parameters,
+        sim_build=sim_build,
+        extra_env=extra_env,
+    )
