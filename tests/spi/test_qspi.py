@@ -22,6 +22,7 @@ THE SOFTWARE.
 import itertools
 import logging
 import os
+from collections import deque
 
 import cocotb
 import cocotb_test.simulator
@@ -138,9 +139,10 @@ async def run_test_qspi(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore
         word_width,
         ignore_rx_value,
         is_quad_mode,
-)
+        )
 
     await Timer(10, 'us')
+    tb.sink._out_queue = deque()    # clear queue for test
 
     for test_data in [incrementing_payload(x) for x in payload_lengths]:
         tb.log.info("Write data: %s", ','.join(['0x%02x' % x for x in test_data]))
@@ -155,9 +157,10 @@ async def run_test_qspi(dut, sclk_freq, word_width, qspi_mode, msb_first, ignore
         filtered_test_data = list(filter(lambda v: v != ignore_rx_value, test_data))
         filtered_sink = [sink_content] if sink_content != ignore_rx_value else []
 
-        tb.log.info("Read data: %s", ','.join(['0x%02x' % x for x in rx_data]))
+        tb.log.info("Read data: %s", ','.join(['0x%02x' % x for x in tb.sink._out_queue]))
         tb.log.info(f"In register: 0x{sink_content:02x}")
-        assert list(rx_data[1:]) + filtered_sink == filtered_test_data
+        assert list(tb.sink._out_queue) == filtered_test_data
+        tb.sink._out_queue = deque()    # clear queue for next run
 
     await Timer(100, 'us')
 
