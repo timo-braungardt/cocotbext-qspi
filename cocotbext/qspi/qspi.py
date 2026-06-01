@@ -243,26 +243,26 @@ class QSpiManager:
     async def _quad_output_write(self, rx_word, tx_word):
         if self._config.cpha:
             # if CPHA=1, the first edge is propagate, the second edge is sample
-            for k in range(self._config.word_width // 4):
+            for k in range(0, self._config.word_width, 4):
                 # the out changes on the leading edge of clock
                 await self._sclk.value_change
-                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
-                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
-                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 3 - k)))
-                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 4 - k)))
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 4 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 3 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
 
                 await self._sclk.value_change
 
         else:
             # if CPHA=0, the first edge is sample, the second edge is propagate
             # we already clocked out one bit on edge of chip select, so we will clock out less bits
-            for k in range(0, self._config.word_width - 4, 4):
+            for k in range(0, self._config.word_width -4, 4):
                 await self._sclk.value_change
                 await self._sclk.value_change
-                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 5 - k)))
-                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 6 - k)))
-                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 7 - k)))
-                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 8 - k)))
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 8 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 7 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 6 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 5 - k)))
 
             # but we haven't sampled enough times, so we will wait for another edge to sample
             await self._sclk.value_change
@@ -291,10 +291,10 @@ class QSpiManager:
                 if not self._config.is_quad_mode:
                     self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 1))
                 else:
-                    self._miso_d0.value = bool(tx_word & (1 << self._config.word_width - 1))
-                    self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 2))
-                    self._d2.value      = bool(tx_word & (1 << self._config.word_width - 3))
-                    self._d3.value      = bool(tx_word & (1 << self._config.word_width - 4))
+                    self._miso_d0.value = bool(tx_word & (1 << self._config.word_width - 4))
+                    self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 3))
+                    self._d2.value      = bool(tx_word & (1 << self._config.word_width - 2))
+                    self._d3.value      = bool(tx_word & (1 << self._config.word_width - 1))
 
             # set the chip select
             if self.has_cs:
@@ -488,20 +488,20 @@ class QSpiSubordinateBase(ABC):
 
             if not self._config.cpha:
                 # when CPHA=0, the subordinate should sample on the first edge
-                rx_word |= int(self._miso_d0.value) << (num_bits - 0 - k)
-                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)       # ToDo: Is the -0 to -3 correct or use -1 to -4???
+                rx_word |= int(self._miso_d0.value) << (num_bits - 4 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 3 - k)
                 rx_word |= int(self._d2.value)      << (num_bits - 2 - k)
-                rx_word |= int(self._d3.value)      << (num_bits - 3 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 1 - k)
 
             # do the opposite of what was done on the first edge
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
                 raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
-                rx_word |= int(self._miso_d0.value) << (num_bits - 0 - k)
-                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                rx_word |= int(self._miso_d0.value) << (num_bits - 4 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 3 - k)
                 rx_word |= int(self._d2.value)      << (num_bits - 2 - k)
-                rx_word |= int(self._d3.value)      << (num_bits - 3 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 1 - k)
 
         return rx_word
 

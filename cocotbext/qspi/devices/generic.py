@@ -57,10 +57,10 @@ class QSpiSubordinateLoopback(QSpiSubordinateBase):
 
                 # get the last 4 data bit
                 r = await First(self._sclk.value_change, frame_end)
-                content |= int(self._miso_d0.value) << 3
-                content |= int(self._mosi_d1.value) << 2
-                content |= int(self._d2.value)      << 1
-                content |= int(self._d3.value)      << 0
+                content |= int(self._miso_d0.value) << 0
+                content |= int(self._mosi_d1.value) << 1
+                content |= int(self._d2.value)      << 2
+                content |= int(self._d3.value)      << 3
 
                 # check to make sure we didn't lose the frame
                 if r == frame_end:
