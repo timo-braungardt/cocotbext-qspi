@@ -57,7 +57,7 @@ class QSpiBus(Bus):
         cs_name=None,
         **kwargs,
     ):
-        signals = {'sclk': sclk_name, 'mosi_d1': mosi_d1_name, 'miso_d0': miso_d0_name, 'd2': d2_name, 'd3':d3_name}
+        signals = {'sclk': sclk_name, 'mosi_d1': mosi_d1_name, 'miso_d0': miso_d0_name, 'd2': d2_name, 'd3': d3_name}
         if cs_name is None:
             optional_signals = {}
         else:
@@ -243,7 +243,7 @@ class QSpiManager:
     async def _quad_output_write(self, rx_word, tx_word):
         if self._config.cpha:
             # if CPHA=1, the first edge is propagate, the second edge is sample
-            for k in range(self._config.word_width //4):
+            for k in range(self._config.word_width // 4):
                 # the out changes on the leading edge of clock
                 await self._sclk.value_change
                 self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
@@ -502,7 +502,6 @@ class QSpiSubordinateBase(ABC):
                 rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
                 rx_word |= int(self._d2.value)      << (num_bits - 2 - k)
                 rx_word |= int(self._d3.value)      << (num_bits - 3 - k)
-            
 
         return rx_word
 

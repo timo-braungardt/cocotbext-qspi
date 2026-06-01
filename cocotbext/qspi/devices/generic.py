@@ -10,7 +10,7 @@ from ..qspi import QSpiBus, QSpiConfig, QSpiSubordinateBase, reverse_word
 
 
 class QSpiSubordinateLoopback(QSpiSubordinateBase):
-    """ Does not loopback in quad mode! 
+    """ Does not loopback in quad mode!
     Probably put it into another class or something...
     """
     def __init__(self, bus: QSpiBus, config: QSpiConfig):
