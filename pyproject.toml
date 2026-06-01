@@ -7,11 +7,12 @@ requires = [
 ]
 
 [project]
-name = "cocotbext-spi"
-description = "SPI modules for cocotb"
+name = "cocotbext-qspi"
+description = "QSPI modules for cocotb"
 readme = "README.md"
 license = "MIT"
 authors = [
+    {name = "Timo Braungardt"},
     {name = "Spencer Chang", email = "spencer@sycee.xyz"},
 ]
 requires-python = ">=3.9"
@@ -28,11 +29,11 @@ dependencies = [
   "cocotb>=2.0.0",
 ]
 [project.urls]
-repository = "https://github.com/schang412/cocotbext-spi"
+repository = "https://github.com/timo-braungardt/cocotbext-qspi"
 
 
 [tool.setuptools_scm]
-write_to = "cocotbext/spi/_version.py"
+write_to = "cocotbext/qspi/_version.py"
 
 [tool.pytest.ini_options]
 testpaths = [
