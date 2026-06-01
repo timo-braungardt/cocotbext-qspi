@@ -9,7 +9,7 @@ from typing import Deque, Iterable, Optional, Tuple
 import cocotb
 from cocotb.triggers import Event, FallingEdge, First, RisingEdge, Timer
 
-from .exceptions import SpiFrameError
+from .exceptions import QSpiFrameError
 
 
 class Bus:
@@ -44,18 +44,20 @@ class Bus:
             setattr(self, attr_name, signal_handle)
 
 
-class SpiBus(Bus):
+class QSpiBus(Bus):
     def __init__(
         self,
         entity=None,
         prefix=None,
         sclk_name='sclk',
-        mosi_name='mosi',
-        miso_name='miso',
+        mosi_d1_name='mosi_d1',
+        miso_d0_name='miso_d0',
+        d2_name='d2',
+        d3_name='d3',
         cs_name=None,
         **kwargs,
     ):
-        signals = {'sclk': sclk_name, 'mosi': mosi_name, 'miso': miso_name}
+        signals = {'sclk': sclk_name, 'mosi_d1': mosi_d1_name, 'miso_d0': miso_d0_name, 'd2': d2_name, 'd3': d3_name}
         if cs_name is None:
             optional_signals = {}
         else:
@@ -72,7 +74,7 @@ class SpiBus(Bus):
 
 
 @dataclass
-class SpiConfig:
+class QSpiConfig:
     word_width: int = 8
     sclk_freq: Optional[float] = 25e6
     cpol: bool = False
@@ -82,16 +84,19 @@ class SpiConfig:
     data_output_idle: int = 1
     ignore_rx_value: Optional[int] = None
     cs_active_low: bool = True
+    is_quad_mode: bool = False
 
 
-class SpiMaster:
-    def __init__(self, bus: SpiBus, config: SpiConfig) -> None:
+class QSpiManager:
+    def __init__(self, bus: QSpiBus, config: QSpiConfig) -> None:
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
-        # spi signals
+        # qspi signals
         self._sclk = bus.sclk
-        self._mosi = bus.mosi
-        self._miso = bus.miso
+        self._mosi_d1 = bus.mosi_d1
+        self._miso_d0 = bus.miso_d0
+        self._d2 = bus.d2
+        self._d3 = bus.d3
         self.has_cs = hasattr(bus, 'cs')
         if self.has_cs:
             self._cs = bus.cs
@@ -108,11 +113,11 @@ class SpiMaster:
         self._idle.set()
 
         self._sclk.value = int(self._config.cpol)
-        self._mosi.value = self._config.data_output_idle
+        self._mosi_d1.value = self._config.data_output_idle
         if self.has_cs:
             self._cs.value = 1 if self._config.cs_active_low else 0
 
-        self._SpiClock = _SpiClock(
+        self._QSpiClock = _QSpiClock(
             signal=self._sclk,
             period=(1 / self._config.sclk_freq),
             unit="sec",
@@ -132,6 +137,26 @@ class SpiMaster:
         await self._idle.wait()
 
     def write_nowait(self, data: Iterable[int], *, burst: bool = False) -> None:
+        """ Write the data to the MOSI line
+
+        Args:
+            data: an iterable of ints, if the wordwidth is 8, a bytearray is typically appropriate
+            burst: if true, CS is not deasserted between writes
+        """
+        if self._config.msb_first:
+            for b in data:
+                self.queue_tx.append((int(b), burst))
+        else:
+            for b in data:
+                self.queue_tx.append((reverse_word(int(b), self._config.word_width), burst))
+        self.sync.set()
+        self._idle.clear()
+
+    async def quad_write(self, data: Iterable[int], *, burst: bool = False):
+        self.quad_write_nowait(data, burst=burst)
+        await self._idle.wait()
+
+    def quad_write_nowait(self, data: Iterable[int], *, burst: bool = False) -> None:
         """ Write the data to the MOSI line
 
         Args:
@@ -188,6 +213,62 @@ class SpiMaster:
         """ Wait for idle """
         await self._idle.wait()
 
+    async def _output_write(self, rx_word, tx_word):
+        if self._config.cpha:
+            # if CPHA=1, the first edge is propagate, the second edge is sample
+            for k in range(self._config.word_width):
+                # the out changes on the leading edge of clock
+                await self._sclk.value_change
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
+
+                # while the in captures on the trailing edge of the clock
+                await self._sclk.value_change
+                rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
+        else:
+            # if CPHA=0, the first edge is sample, the second edge is propagate
+            # we already clocked out one bit on edge of chip select, so we will clock out less bits
+            for k in range(self._config.word_width - 1):
+                await self._sclk.value_change
+                rx_word |= bool(self._miso_d0.value) << (self._config.word_width - 1 - k)
+
+                await self._sclk.value_change
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+
+            # but we haven't sampled enough times, so we will wait for another edge to sample
+            await self._sclk.value_change
+            rx_word |= bool(self._miso_d0.value)
+
+        return rx_word
+
+    async def _quad_output_write(self, rx_word, tx_word):
+        if self._config.cpha:
+            # if CPHA=1, the first edge is propagate, the second edge is sample
+            for k in range(self._config.word_width // 4):
+                # the out changes on the leading edge of clock
+                await self._sclk.value_change
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 3 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 4 - k)))
+
+                await self._sclk.value_change
+
+        else:
+            # if CPHA=0, the first edge is sample, the second edge is propagate
+            # we already clocked out one bit on edge of chip select, so we will clock out less bits
+            for k in range(0, self._config.word_width - 4, 4):
+                await self._sclk.value_change
+                await self._sclk.value_change
+                self._miso_d0.value = bool(tx_word & (1 << (self._config.word_width - 5 - k)))
+                self._mosi_d1.value = bool(tx_word & (1 << (self._config.word_width - 6 - k)))
+                self._d2.value      = bool(tx_word & (1 << (self._config.word_width - 7 - k)))
+                self._d3.value      = bool(tx_word & (1 << (self._config.word_width - 8 - k)))
+
+            # but we haven't sampled enough times, so we will wait for another edge to sample
+            await self._sclk.value_change
+
+        return rx_word      # ToDo: is the rx_word needed?
+
     async def _run(self):
         while True:
             while not self.queue_tx:
@@ -207,46 +288,33 @@ class SpiMaster:
 
             # if CPHA=0, the first bit is typically clocked out on edge of chip select
             if not self._config.cpha:
-                self._mosi.value = bool(tx_word & (1 << self._config.word_width - 1))
+                if not self._config.is_quad_mode:
+                    self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 1))
+                else:
+                    self._miso_d0.value = bool(tx_word & (1 << self._config.word_width - 1))
+                    self._mosi_d1.value = bool(tx_word & (1 << self._config.word_width - 2))
+                    self._d2.value      = bool(tx_word & (1 << self._config.word_width - 3))
+                    self._d3.value      = bool(tx_word & (1 << self._config.word_width - 4))
 
             # set the chip select
             if self.has_cs:
                 self._cs.value = int(not self._config.cs_active_low)
-            await Timer(self._SpiClock.period, unit='step')
+            await Timer(self._QSpiClock.period, unit='step')
 
-            await self._SpiClock.start()
+            await self._QSpiClock.start()
 
-            if self._config.cpha:
-                # if CPHA=1, the first edge is propagate, the second edge is sample
-                for k in range(self._config.word_width):
-                    # the out changes on the leading edge of clock
-                    await self._sclk.value_change
-                    self._mosi.value = bool(tx_word & (1 << (self._config.word_width - 1 - k)))
-
-                    # while the in captures on the trailing edge of the clock
-                    await self._sclk.value_change
-                    rx_word |= bool(self._miso.value) << (self._config.word_width - 1 - k)
+            if not self._config.is_quad_mode:
+                rx_word = await self._output_write(rx_word, tx_word)
             else:
-                # if CPHA=0, the first edge is sample, the second edge is propagate
-                # we already clocked out one bit on edge of chip select, so we will clock out less bits
-                for k in range(self._config.word_width - 1):
-                    await self._sclk.value_change
-                    rx_word |= bool(self._miso.value) << (self._config.word_width - 1 - k)
-
-                    await self._sclk.value_change
-                    self._mosi.value = bool(tx_word & (1 << (self._config.word_width - 2 - k)))
-
-                # but we haven't sampled enough times, so we will wait for another edge to sample
-                await self._sclk.value_change
-                rx_word |= bool(self._miso.value)
+                rx_word = await self._quad_output_write(rx_word, tx_word)
 
             # set sclk back to idle state
-            await self._SpiClock.stop()
+            await self._QSpiClock.stop()
             self._sclk.value = self._config.cpol
 
             # wait another sclk period before restoring the chip select and miso to idle (not necessarily part of spec)
-            await Timer(self._SpiClock.period, unit='step')
-            self._mosi.value = int(self._config.data_output_idle)
+            await Timer(self._QSpiClock.period, unit='step')
+            self._mosi_d1.value = int(self._config.data_output_idle)
             if self.has_cs:
                 if not burst or self.empty_tx():
                     self._cs.value = int(self._config.cs_active_low)
@@ -265,18 +333,23 @@ class SpiMaster:
             self.sync.set()
 
 
-class SpiSlaveBase(ABC):
-    _config: SpiConfig
+class QSpiSubordinateBase(ABC):
+    _config: QSpiConfig
 
-    def __init__(self, bus: SpiBus):
+    def __init__(self, bus: QSpiBus):
         self.log = logging.getLogger(f"cocotb.{bus.sclk._path}")
 
         self._sclk = bus.sclk
-        self._mosi = bus.mosi
-        self._miso = bus.miso
+        self._mosi_d1 = bus.mosi_d1
+        self._miso_d0 = bus.miso_d0
+        self._d2 = bus.d2
+        self._d3 = bus.d3
         self._cs = bus.cs
 
-        self._miso.value = self._config.data_output_idle
+        self._miso_d0.value = self._config.data_output_idle
+        self._mosi_d1.value = self._config.data_output_idle     # ToDo: is this a problem because the signal is bidirectional now?
+        self._d2.value = self._config.data_output_idle
+        self._d3.value = self._config.data_output_idle
 
         self.idle = Event()
         self.idle.set()
@@ -307,29 +380,29 @@ class SpiSlaveBase(ABC):
             # If both events happen at the same time, the returned one is indeterminate, thus
             # checking for cs = 1
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
-                # when CPHA=1, the slave should shift out on the first edge
+                # when CPHA=1, the subordinate should shift out on the first edge
                 if tx_word is not None:
-                    self._miso.value = bool(tx_word & (1 << (num_bits - 1 - k)))
+                    self._miso_d0.value = bool(tx_word & (1 << (num_bits - 1 - k)))
                 else:
-                    self._miso.value = self._config.data_output_idle
+                    self._miso_d0.value = self._config.data_output_idle
             else:
-                # when CPHA=0, the slave should sample on the first edge
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
+                # when CPHA=0, the subordinate should sample on the first edge
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
 
             # do the opposite of what was done on the first edge
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if self._config.cpha:
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
             else:
                 if tx_word is not None:
-                    self._miso.value = bool(tx_word & (1 << (num_bits - 1 - k)))
+                    self._miso_d0.value = bool(tx_word & (1 << (num_bits - 1 - k)))
                 else:
-                    self._miso.value = self._config.data_output_idle
+                    self._miso_d0.value = self._config.data_output_idle
 
         return rx_word
 
@@ -358,45 +431,90 @@ class SpiSlaveBase(ABC):
         for k in range(num_bits):
             f = await First(self._sclk.value_change, frame_end)
             if not self._config.cpha:
-                # when CPHA=0, the first thing the slave should do is read in
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
-                most_recent_bit = int(self._mosi.value)
+                # when CPHA=0, the first thing the subordinate should do is read in
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                most_recent_bit = int(self._mosi_d1.value)
 
                 w = await First(propagate_out_delay, frame_end, self._sclk.value_change)
 
                 if w != propagate_out_delay:
                     if w == frame_end:
-                        raise SpiFrameError("Unexpected end of frame in the middle of a transaction")
+                        raise QSpiFrameError("Unexpected end of frame in the middle of a transaction")
                     else:
-                        raise SpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
+                        raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
-                self._miso.value = bool(most_recent_bit)
+                self._miso_d0.value = bool(most_recent_bit)
 
             s = await First(self._sclk.value_change, frame_end)
 
             if self._config.cpha:
                 # when CPHA=1, the second thing we should do is read in
-                rx_word |= int(self._mosi.value) << (num_bits - 1 - k)
-                most_recent_bit = int(self._mosi.value)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                most_recent_bit = int(self._mosi_d1.value)
 
                 w = await First(propagate_out_delay, frame_end, self._sclk.value_change)
 
                 if w != propagate_out_delay:
                     if w == frame_end:
-                        raise SpiFrameError("Unexpected end of frame in the middle of a transaction")
+                        raise QSpiFrameError("Unexpected end of frame in the middle of a transaction")
                     else:
-                        raise SpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
+                        raise QSpiFrameError("Unexpected edge of sclk while waiting to propagate next bit")
 
-                self._miso.value = bool(most_recent_bit)
+                self._miso_d0.value = bool(most_recent_bit)
 
             if frame_end in (f, s):
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
         return rx_word
 
+    async def _quad_recieve(self, num_bits: int) -> int:
+        """ Recieve data on all 4 signal channels.
+
+        Args:
+            num_bits: the numbers of bits which should be revieved
+
+        Returns:
+            the received word
+        """
+        rx_word = 0
+
+        frame_end = RisingEdge(self._cs) if self._config.cs_active_low else FallingEdge(self._cs)
+
+        for k in range(0, num_bits, 4):
+            # If both events happen at the same time, the returned one is indeterminate, thus
+            # checking for cs = 1
+            if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
+                raise QSpiFrameError("End of frame in the middle of a transaction")
+
+            if not self._config.cpha:
+                # when CPHA=0, the subordinate should sample on the first edge
+                rx_word |= int(self._miso_d0.value) << (num_bits - 0 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)       # ToDo: Is the -0 to -3 correct or use -1 to -4???
+                rx_word |= int(self._d2.value)      << (num_bits - 2 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 3 - k)
+
+            # do the opposite of what was done on the first edge
+            if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
+                raise QSpiFrameError("End of frame in the middle of a transaction")
+
+            if self._config.cpha:
+                rx_word |= int(self._miso_d0.value) << (num_bits - 0 - k)
+                rx_word |= int(self._mosi_d1.value) << (num_bits - 1 - k)
+                rx_word |= int(self._d2.value)      << (num_bits - 2 - k)
+                rx_word |= int(self._d3.value)      << (num_bits - 3 - k)
+
+        return rx_word
+
+    async def _quad_send(self, tx_word: int):
+        """ Send data on all 4 signal channels.
+
+        Args:
+            tx_word: the bytes to be transmitted on the wire
+        """
+
     @abstractmethod
     async def _transaction(self, frame_start, frame_end):
-        """Implement the details of an SPI transaction """
+        """Implement the details of an QSPI transaction """
         raise NotImplementedError("Please implement the _transaction method")
 
     async def _run(self):
@@ -412,11 +530,11 @@ class SpiSlaveBase(ABC):
         while True:
             self.idle.set()
             if (await First(frame_start, frame_spacing)) == frame_start:
-                raise SpiFrameError(f"There must be at least {self._config.frame_spacing_ns} ns between frames")
+                raise QSpiFrameError(f"There must be at least {self._config.frame_spacing_ns} ns between frames")
             await self._transaction(frame_start, frame_end)
 
 
-class _SpiClock:
+class _QSpiClock:
     def __init__(self, signal, period, unit="step", start_high=True):
         self.period = cocotb.utils.get_sim_steps(period, unit, round_mode="round")
         self.half_period = cocotb.utils.get_sim_steps(period / 2.0, unit, round_mode="round")

@@ -19,28 +19,23 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-import os
-import sys
+from .about import __version__
+from .exceptions import QSpiFrameError
+from .exceptions import QSpiFrameTimeout
+from .qspi import reverse_word
+from .qspi import QSpiBus
+from .qspi import QSpiConfig
+from .qspi import QSpiManager
+from .qspi import QSpiSubordinateBase
 
-from ... import SpiSlaveBase
 
-__dir_path = os.path.dirname(os.path.abspath(__file__))
-__ignore = ['__init__.py']
-
-for f in [f[:-3] for f in os.listdir(__dir_path) if f.endswith('.py') and f not in __ignore]:
-    mod = __import__('.'.join([__name__, f]), fromlist=[f])
-    objects = [getattr(mod, x) for x in dir(mod)]
-    to_import = []
-
-    for a in objects:
-        try:
-            if issubclass(a, SpiSlaveBase):
-                to_import.append(a)
-        except TypeError:
-            pass
-
-    for i in to_import:
-        try:
-            setattr(sys.modules[__name__], i.__name__, i)
-        except AttributeError:
-            pass
+__all__ = [
+    "__version__",
+    "QSpiManager",
+    "QSpiSubordinateBase",
+    "QSpiBus",
+    "QSpiConfig",
+    "QSpiFrameError",
+    "QSpiFrameTimeout",
+    "reverse_word",
+]

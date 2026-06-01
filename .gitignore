@@ -19,4 +19,4 @@ tests/**/.pytest_cache
 *~
 
 .venv
-cocotbext/spi/_version.py
+cocotbext/qspi/_version.py

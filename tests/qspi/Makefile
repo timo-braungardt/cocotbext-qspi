@@ -6,7 +6,7 @@ WAVES ?= 1
 COCOTB_HDL_TIMEUNIT = 1ns
 COCOTB_HDL_TIMEPRECISION = 1ps
 
-DUT      = test_drv8304
+DUT      = test_qspi
 TOPLEVEL = $(DUT)
 MODULE   = $(DUT)
 
