@@ -75,6 +75,9 @@ class QSpiBus(Bus):
 
 @dataclass
 class QSpiConfig:
+    """
+    Mode 0 = cpol: False, cpha: False
+    """
     word_width: int = 8
     sclk_freq: Optional[float] = 25e6
     cpol: bool = False

@@ -23,7 +23,7 @@ class TB:
 
         self.config = QSpiConfig(
             word_width=8,
-            cpol=True,
+            cpol=False,
             cpha=False,
             msb_first=True,
             frame_spacing_ns=6,

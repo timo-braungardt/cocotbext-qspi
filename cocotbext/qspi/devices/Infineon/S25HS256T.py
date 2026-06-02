@@ -17,7 +17,7 @@ from ...qspi import QSpiSubordinateBase
 class S25HS256T(QSpiSubordinateBase):
     _config = QSpiConfig(
         word_width=8,
-        cpol=True,
+        cpol=False,
         cpha=False,
         msb_first=True,
         frame_spacing_ns=6,
