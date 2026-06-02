@@ -35,13 +35,20 @@ class TB:
         self.sink = S25HS256T(self.bus)
 
 
+def convert_int_to_bytes(input, num_bytes):
+    # Source - https://stackoverflow.com/a/32490254
+    # Posted by jojonas
+    numbers = list((input >> i) & 0xFF for i in range(0, num_bytes*8, 8))
+    return list(reversed(numbers))
+
+
 @cocotb.test()
 async def run_test_S25HS256T(dut):
     tb = TB(dut)
     await Timer(10, 'us')
 
-    await tb.source.write([0x03, 0x42], burst=True)
-    await tb.sink.idle()
+    await tb.source.write(convert_int_to_bytes(0x03000042, 4), burst=True)
+    await tb.sink.idle.wait()
 
 
 tests_dir = os.path.dirname(__file__)
