@@ -20,3 +20,5 @@ tests/**/.pytest_cache
 
 .venv
 cocotbext/qspi/_version.py
+
+.vscode/
