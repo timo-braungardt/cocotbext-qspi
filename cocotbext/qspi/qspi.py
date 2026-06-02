@@ -522,6 +522,7 @@ class QSpiSubordinateBase(ABC):
             if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
                 raise QSpiFrameError("End of frame in the middle of a transaction")
 
+            await FallingEdge(self._sclk)
             self._miso_d0.value = bool((tx_word >> k-4) & 0x01)
             self._mosi_d1.value = bool((tx_word >> k-3) & 0x01)
             self._d2.value      = bool((tx_word >> k-2) & 0x01)
