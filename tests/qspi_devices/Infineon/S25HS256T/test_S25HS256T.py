@@ -10,7 +10,7 @@ from cocotb.triggers import Timer
 from cocotbext.qspi import QSpiBus
 from cocotbext.qspi import QSpiConfig
 from cocotbext.qspi import QSpiManager
-from cocotbext.qspi.devices.Infineon import S25HS256T
+from cocotbext.qspi.devices.Infineon.S25HS256T import S25HS256T
 
 
 class TB:
@@ -19,14 +19,14 @@ class TB:
         self.log = logging.getLogger("cocotb.tb")
         self.log.setLevel(logging.DEBUG)
 
-        self.bus = SpiBus.from_entity(dut, cs_name="ncs")
+        self.bus = QSpiBus.from_entity(dut, cs_name="ncs")
 
         self.config = QSpiConfig(
             word_width=8,
-            sclk_freq=25e6,
             cpol=True,
-            cpha=True,
+            cpha=False,
             msb_first=True,
+            frame_spacing_ns=6,
             cs_active_low=True,
             is_quad_mode=False,
         )

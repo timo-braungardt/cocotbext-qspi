@@ -9,13 +9,13 @@ from cocotb.triggers import First
 from cocotb.triggers import RisingEdge
 
 from ...exceptions import QSpiFrameError
-from ...spi import QSpiBus
-from ...spi import QSpiConfig
-from ...spi import QSpiSubordinateBase
+from ...qspi import QSpiBus
+from ...qspi import QSpiConfig
+from ...qspi import QSpiSubordinateBase
 
 
 class S25HS256T(QSpiSubordinateBase):
-    _config = SpiConfig(
+    _config = QSpiConfig(
         word_width=8,
         cpol=True,
         cpha=False,
@@ -26,9 +26,15 @@ class S25HS256T(QSpiSubordinateBase):
     )
 
 
-    async def _recieve_bits(self, num_bits, quad_mode=False):
+    def __init__(self, bus: QSpiBus):
+        self._out_queue = deque()
+        self._out_queue.append(0)
+        super().__init__(bus)
+
+
+    async def _recieve_bits(self, num_bits, frame_end, quad_mode=False):
         if not quad_mode:
-            tx_word = self._out_queue.popleft()
+            tx_word = 0
             if not self._config.cpha:
                 content = int(await self._shift(num_bits - 1, tx_word=tx_word))
                 # get the last data bit
@@ -58,7 +64,7 @@ class S25HS256T(QSpiSubordinateBase):
         await frame_start
         self.idle.clear()
 
-        opcode = _recieve_bits(8)
-        address = _recieve_bits(24, self._config.is_quad_mode)
+        opcode = await self._recieve_bits(8, frame_end)
+        address = await self._recieve_bits(24, frame_end, self._config.is_quad_mode)
         print(f"opcode {opcode}\naddress {address}")
         await frame_end
