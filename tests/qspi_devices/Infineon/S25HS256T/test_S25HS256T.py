@@ -49,7 +49,8 @@ async def run_test_S25HS256T(dut):
 
     await tb.source.write(convert_int_to_bytes(0x03000042, 4), burst=True)
     await tb.sink.idle.wait()
-
+    assert tb.sink._opcode  == 0x3
+    assert tb.sink._address == 0x42
 
 tests_dir = os.path.dirname(__file__)
 

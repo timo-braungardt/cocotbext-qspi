@@ -29,6 +29,8 @@ class S25HS256T(QSpiSubordinateBase):
     def __init__(self, bus: QSpiBus):
         self._out_queue = deque()
         self._out_queue.append(0)
+        self._opcode = -1
+        self._address = -1
         super().__init__(bus)
 
 
@@ -64,7 +66,6 @@ class S25HS256T(QSpiSubordinateBase):
         await frame_start
         self.idle.clear()
 
-        opcode = await self._recieve_bits(8, frame_end)
-        address = await self._recieve_bits(24, frame_end, self._config.is_quad_mode)
-        print(f"opcode {opcode}\naddress {address}")
+        self._opcode = await self._recieve_bits(8, frame_end)
+        self._address = await self._recieve_bits(24, frame_end, self._config.is_quad_mode)
         await frame_end
