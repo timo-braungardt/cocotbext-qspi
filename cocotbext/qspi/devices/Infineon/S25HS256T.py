@@ -36,7 +36,7 @@ class S25HS256T(QSpiSubordinateBase):
 
     async def _recieve_bits(self, num_bits, frame_end, quad_mode=False):
         if not quad_mode:
-            tx_word = 0
+            tx_word = 0     # ToDo: in spi mode, it should shift out the current data in the register
             if not self._config.cpha:
                 content = int(await self._shift(num_bits - 1, tx_word=tx_word))
                 # get the last data bit
