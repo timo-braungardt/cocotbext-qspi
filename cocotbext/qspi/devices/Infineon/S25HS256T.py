@@ -13,6 +13,9 @@ from ...qspi import QSpiBus
 from ...qspi import QSpiConfig
 from ...qspi import QSpiSubordinateBase
 
+import numpy as np
+from numpy import uint8
+
 
 class S25HS256T(QSpiSubordinateBase):
     _config = QSpiConfig(
@@ -24,6 +27,12 @@ class S25HS256T(QSpiSubordinateBase):
         cs_active_low=True,
         is_quad_mode=False,
     )
+
+    _memory = np.full(256*(2**20), 255, dtype=uint8)
+    _transactions = {
+        'RDAY1_C_0': 0x03,  # Read SDR
+        'PRPGE_C_1': 0x02,  # Program Page
+    }
 
 
     def __init__(self, bus: QSpiBus):
@@ -62,6 +71,13 @@ class S25HS256T(QSpiSubordinateBase):
         return content
 
 
+    async def _send_bits(self, data, num_bits, frame_end, quad_mode=False):
+        if quad_mode:
+            await self._quad_send(data, num_bits)
+        else:
+            await self._shift(num_bits, tx_word=data)   # ToDo: the data is discarded - change it?
+
+
     async def _transaction(self, frame_start, frame_end):
         await frame_start
         self.idle.clear()
@@ -69,4 +85,14 @@ class S25HS256T(QSpiSubordinateBase):
         self._opcode = await self._recieve_bits(8, frame_end)
         await self._sclk.value_change   # await the negative clock edge (why does )
         self._address = await self._recieve_bits(24, frame_end, self._config.is_quad_mode)
+        await self._sclk.value_change   # await the negative clock edge (why does )
+
+        if self._opcode == self._transactions['PRPGE_C_1']:
+            data = await self._recieve_bits(8, frame_end, self._config.is_quad_mode)
+            # we can only program zeros
+            self._memory[self._address] = self._memory[self._address] & uint8(data)
+        
+        if self._opcode == self._transactions['RDAY1_C_0']:
+            await self._send_bits(self._memory[self._address], 8, frame_end)
+
         await frame_end

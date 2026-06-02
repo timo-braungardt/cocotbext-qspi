@@ -47,8 +47,14 @@ async def run_test_S25HS256T(dut):
     tb = TB(dut)
     await Timer(10, 'us')
 
-    await tb.source.write(convert_int_to_bytes(0x03000042, 4), burst=True)
+    await tb.source.write(convert_int_to_bytes(0x0200004212, 5), burst=True)
     await tb.sink.idle.wait()
+    assert tb.sink._opcode  == 0x2
+    assert tb.sink._address == 0x42
+    assert int(tb.sink._memory[0x42]) == 0x12
+
+    await Timer(1, 'us')
+    await tb.source.write(convert_int_to_bytes(0x0300004200, 5), burst=True)
     assert tb.sink._opcode  == 0x3
     assert tb.sink._address == 0x42
 

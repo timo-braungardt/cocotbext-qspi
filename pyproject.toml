@@ -48,6 +48,7 @@ dev = [
     "pytest-xdist>=3.6.1",
     "tox>=4.25.0",
     "debugpy>=1.8.21",
+    "numpy>=2.4",
 ]
 lint = [
     "flake8>=7.3.0",

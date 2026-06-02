@@ -508,12 +508,25 @@ class QSpiSubordinateBase(ABC):
 
         return rx_word
 
-    async def _quad_send(self, tx_word: int):
+    async def _quad_send(self, tx_word: int, num_bits: int):
         """ Send data on all 4 signal channels.
 
         Args:
             tx_word: the bytes to be transmitted on the wire
         """
+        frame_end = RisingEdge(self._cs) if self._config.cs_active_low else FallingEdge(self._cs)
+
+        for k in range(num_bits, 0, -4):
+            # If both events happen at the same time, the returned one is indeterminate, thus
+            # checking for cs = 1
+            if (await First(self._sclk.value_change, frame_end)) == frame_end or self._cs.value == 1:
+                raise QSpiFrameError("End of frame in the middle of a transaction")
+
+            self._miso_d0.value = bool((tx_word >> k-4) & 0x01)
+            self._mosi_d1.value = bool((tx_word >> k-3) & 0x01)
+            self._d2.value      = bool((tx_word >> k-2) & 0x01)
+            self._d3.value      = bool((tx_word >> k-1) & 0x01)
+            #ToDo: check when the data should be shifted out
 
     @abstractmethod
     async def _transaction(self, frame_start, frame_end):
