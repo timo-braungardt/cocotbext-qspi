@@ -67,5 +67,6 @@ class S25HS256T(QSpiSubordinateBase):
         self.idle.clear()
 
         self._opcode = await self._recieve_bits(8, frame_end)
+        await self._sclk.value_change   # await the negative clock edge (why does )
         self._address = await self._recieve_bits(24, frame_end, self._config.is_quad_mode)
         await frame_end
