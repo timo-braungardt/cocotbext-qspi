@@ -13,3 +13,9 @@ Installation from pip:
 ```bash
 pip install git+https://github.com/timo-braungardt/cocotbext-qspi.git
 ```
+
+## Development
+1. clone repo
+1. create a venv
+1. install project in editable mode `pip install -e cocotbext-spi`
+1. install dev dependencies `python -m pip install --group dev` (you need pip version >= 25.1)
