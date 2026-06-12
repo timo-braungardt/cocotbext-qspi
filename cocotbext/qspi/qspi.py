@@ -509,7 +509,7 @@ class QSpiSubordinateBase(ABC):
             # If both events happen at the same time, the returned one is indeterminate, thus
             # checking for cs = 1
             if (await First(clock_edge, frame_end)) == frame_end or self._cs.value == 1:
-                raise SpiFrameError("End of frame in the middle of a transaction")
+                raise QSpiFrameError("End of frame in the middle of a transaction")
 
             if not self._config.cpha:
                 self._miso_d0.value = bool(tx_word & (1 << (num_bits - 4 - k)))
